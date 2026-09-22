@@ -42,3 +42,4 @@ catboost_info/
 # IDE
 .vscode/
 .idea/
+*.npz

@@ -1,6 +1,8 @@
 """
 Regenerate all paper figures with publication-quality styling.
-Uses leak-free prediction model: predict case(t+1) from features(t).
+Uses the final composed-alone model (rolling-origin + meta-features +
+3-class composition) from round3_probs.npz, plus a fixed-split XGBoost
+for feature importance.
 """
 import sys, os, warnings
 sys.path.insert(0, os.path.dirname(__file__))
@@ -16,7 +18,7 @@ import matplotlib.colors as mcolors
 from matplotlib.colors import LinearSegmentedColormap
 import seaborn as sns
 import geopandas as gpd
-from sklearn.metrics import classification_report, confusion_matrix
+from sklearn.metrics import classification_report, confusion_matrix, accuracy_score, f1_score
 from sklearn.impute import SimpleImputer
 from sklearn.preprocessing import StandardScaler, LabelEncoder
 from xgboost import XGBClassifier
@@ -44,8 +46,6 @@ CASE_LABELS = {
 }
 CASE_ORDER = ["A", "B", "C", "D", "None"]
 MAINLAND_EXCLUDE = ["Las Palmas", "Santa Cruz de Tenerife"]
-ERROR_CMAP = LinearSegmentedColormap.from_list(
-    "purples_trunc", plt.cm.Purples(np.linspace(0.08, 0.95, 256)))
 
 
 def _relative_luminance(hex_color):
@@ -59,7 +59,7 @@ def _mainland(gdf):
 
 
 # ════════════════════════════════════════
-# DATA LOADING + LEAK-FREE MODEL
+# DATA LOADING
 # ════════════════════════════════════════
 print("Loading data...")
 df = load_data()
@@ -74,10 +74,9 @@ df["rent_change"] = grouped[rent_col].pct_change()
 df["sale_change"] = grouped[sale_col].pct_change()
 df = classify_cases(df)
 
-# Target: next quarter's case (leak-free)
 df["target_case"] = df.groupby("CUSEC")["case"].shift(-1)
 
-# Features
+# Base features (for fixed-split feature importance model)
 df["rent_sale_ratio"] = df[rent_col] / df[sale_col].replace(0, np.nan)
 df["sale_change_curr"] = df["sale_change"]
 df["rent_change_curr"] = df["rent_change"]
@@ -179,7 +178,9 @@ FEATURE_LABELS = {
 
 print(f"Data loaded: {len(df):,} rows, {len(FEATURES)} features")
 
-# Train leak-free model inline
+# ════════════════════════════════════════
+# TRAINABLE SET + SPLIT
+# ════════════════════════════════════════
 trainable = df.dropna(subset=["sale_lag1", "rent_lag1", "target_case"]).copy()
 trainable = trainable[trainable["target_case"] != "Unknown"]
 
@@ -187,12 +188,42 @@ le = LabelEncoder()
 trainable["target_encoded"] = le.fit_transform(trainable["target_case"])
 
 train_mask = trainable["year"] < 2020
+y_train = trainable.loc[train_mask, "target_encoded"].values
+y_test_local = trainable.loc[~train_mask, "target_encoded"].values
+n_test = int((~train_mask).sum())
+
+print(f"Split: {train_mask.sum():,} train, {n_test:,} test")
+
+# ════════════════════════════════════════
+# LOAD COMPOSED-ALONE PROBABILITIES
+# ════════════════════════════════════════
+NPZ_PATH = os.path.join(os.path.dirname(__file__), "outputs", "round3_probs.npz")
+print(f"Loading final model probabilities from {NPZ_PATH}...")
+probs = np.load(NPZ_PATH)
+C_roll = probs["C_roll"]
+y_te_npz = probs["y_te"]
+
+assert len(C_roll) == n_test, f"Size mismatch: npz={len(C_roll)}, local={n_test}"
+assert np.array_equal(y_te_npz, y_test_local), "Label mismatch between npz and local data"
+print(f"  Verified: {n_test:,} test rows, labels match")
+
+composed_pred = C_roll.argmax(1)
+composed_acc = accuracy_score(y_test_local, composed_pred)
+composed_f1 = f1_score(y_test_local, composed_pred, average="weighted")
+print(f"  Composed-alone model: Acc={composed_acc:.4f}, F1={composed_f1:.4f}")
+
+# Map predictions to class names
+test_data = trainable[~train_mask].copy()
+test_data["predicted"] = le.inverse_transform(composed_pred)
+test_data["actual"] = test_data["target_case"]
+
+# ════════════════════════════════════════
+# FIXED-SPLIT MODEL (feature importance only)
+# ════════════════════════════════════════
+print("Training fixed-split XGBoost for feature importance...")
 X_train = trainable.loc[train_mask, FEATURES].values
 X_test = trainable.loc[~train_mask, FEATURES].values
-y_train = trainable.loc[train_mask, "target_encoded"].values
-y_test = trainable.loc[~train_mask, "target_encoded"].values
 
-print(f"Training model: {len(X_train):,} train, {len(X_test):,} test")
 imp = SimpleImputer(strategy="mean")
 sc = StandardScaler()
 X_train_p = sc.fit_transform(imp.fit_transform(X_train))
@@ -205,17 +236,9 @@ clf = XGBClassifier(
     eval_metric="mlogloss", random_state=42, n_jobs=-1,
 )
 clf.fit(X_train_p, y_train)
-xgb_pred = clf.predict(X_test_p)
-from sklearn.metrics import accuracy_score, f1_score
-acc = accuracy_score(y_test, xgb_pred)
-f1 = f1_score(y_test, xgb_pred, average="weighted")
-print(f"Model: Acc={acc:.4f}, F1={f1:.4f}")
+print(f"  Fixed-split model trained (for feature importance only)")
 
-test_data = trainable[~train_mask].copy()
-test_data["predicted"] = le.inverse_transform(xgb_pred)
-test_data["actual"] = test_data["target_case"]
-
-# Descriptive data (for case distribution plots, uses case at t, not t+1)
+# Descriptive data
 clean = df[df["case"].isin(["A", "B", "C", "D", "None"])].copy()
 
 # ════════════════════════════════════════
@@ -248,10 +271,10 @@ plt.close(fig)
 print("  Saved case_distribution_over_time.png")
 
 # ════════════════════════════════════════
-# FIGURE 2: Confusion Matrix (predicting t+1)
+# FIGURE 2: Confusion Matrix (composed-alone model)
 # ════════════════════════════════════════
 print("Generating confusion matrix...")
-cm = confusion_matrix(y_test, xgb_pred)
+cm = confusion_matrix(y_test_local, composed_pred)
 fig, ax = plt.subplots(figsize=(10, 8))
 cm_norm = cm.astype("float") / cm.sum(axis=1)[:, np.newaxis]
 im = ax.imshow(cm_norm, interpolation="nearest", cmap="Blues", vmin=0, vmax=0.6)
@@ -263,7 +286,7 @@ ax.set_xticklabels(short_labels, fontsize=13, fontweight="bold")
 ax.set_yticklabels(short_labels, fontsize=13, fontweight="bold")
 ax.set_xlabel("Predicted (t+1)", fontsize=14, fontweight="bold", labelpad=10)
 ax.set_ylabel("Actual (t+1)", fontsize=14, fontweight="bold", labelpad=10)
-ax.set_title("XGBoost Confusion Matrix: Predicting Next-Quarter Case\n(Normalized)",
+ax.set_title("Confusion Matrix: Predicting Next-Quarter Gentrification Type\n(Normalized)",
              fontsize=16, fontweight="bold", pad=15)
 
 for i in range(len(le.classes_)):
@@ -313,10 +336,10 @@ plt.close(fig)
 print("  Saved xgboost_feature_importance.png")
 
 # ════════════════════════════════════════
-# FIGURE 4: Per-Class Performance
+# FIGURE 4: Per-Class Performance (composed-alone)
 # ════════════════════════════════════════
 print("Generating per-class performance...")
-report = classification_report(y_test, xgb_pred, target_names=le.classes_,
+report = classification_report(y_test_local, composed_pred, target_names=le.classes_,
                                 output_dict=True, zero_division=0)
 classes = list(le.classes_)
 f1s = [report[c]["f1-score"] for c in classes]
@@ -337,7 +360,7 @@ ax.set_xticks(x)
 labels = [CASE_LABELS.get(c, c) for c in classes]
 ax.set_xticklabels(labels, fontsize=11, rotation=15, ha="right")
 ax.set_ylabel("Score", fontsize=14, fontweight="bold")
-ax.set_title("XGBoost Per-Class Performance (Predicting Next-Quarter Case)",
+ax.set_title("Per-Class Performance (Predicting Next-Quarter Case)",
              fontsize=16, fontweight="bold", pad=15)
 ax.legend(fontsize=12, framealpha=0.95, edgecolor="#cccccc")
 ax.set_ylim(0, 0.65)
@@ -354,7 +377,58 @@ plt.close(fig)
 print("  Saved xgboost_per_class_performance.png")
 
 # ════════════════════════════════════════
-# FIGURES 5+: Province-level choropleth maps
+# FIGURE 5: Selective Prediction Curve
+# ════════════════════════════════════════
+print("Generating selective prediction curve...")
+mx = C_roll.max(1)
+pred = C_roll.argmax(1)
+order = np.argsort(mx)
+n = len(mx)
+
+coverages, accs, ns = [], [], []
+for cov in np.arange(0.10, 1.01, 0.01):
+    k = int(n * cov)
+    if k == 0:
+        continue
+    idx = order[-k:]
+    a = accuracy_score(y_test_local[idx], pred[idx])
+    coverages.append(cov)
+    accs.append(a)
+    ns.append(k)
+
+fig, ax = plt.subplots(figsize=(12, 7))
+ax.plot([c * 100 for c in coverages], [a * 100 for a in accs],
+        color="#264653", linewidth=2.5, zorder=3)
+ax.axhline(y=20, color="#999999", linestyle=":", linewidth=1, label="Chance (20%)")
+ax.axhline(y=composed_acc * 100, color="#E76F51", linestyle="--", linewidth=1.2,
+           label=f"Full coverage ({composed_acc*100:.1f}%)")
+
+for cov_mark in [0.3, 0.5, 0.8]:
+    k = int(n * cov_mark)
+    idx_m = order[-k:]
+    a_m = accuracy_score(y_test_local[idx_m], pred[idx_m])
+    ax.plot(cov_mark * 100, a_m * 100, "o", color="#E63946", markersize=8, zorder=4)
+    ax.annotate(f"{a_m*100:.1f}%", (cov_mark * 100, a_m * 100),
+                textcoords="offset points", xytext=(8, 8), fontsize=11,
+                fontweight="bold", color="#E63946")
+
+ax.set_xlabel("Coverage (%)", fontsize=14, fontweight="bold")
+ax.set_ylabel("Accuracy (%)", fontsize=14, fontweight="bold")
+ax.set_title("Selective Prediction: Accuracy vs. Coverage\n"
+             "(Higher confidence threshold = fewer predictions but higher accuracy)",
+             fontsize=16, fontweight="bold", pad=15)
+ax.legend(fontsize=12, framealpha=0.95, edgecolor="#cccccc", loc="upper right")
+ax.set_xlim(8, 102)
+ax.set_ylim(15, 82)
+ax.tick_params(axis="both", labelsize=12)
+sns.despine(left=True, bottom=True)
+plt.tight_layout()
+fig.savefig(FIGURES_DIR / "selective_prediction_curve.png", bbox_inches="tight")
+plt.close(fig)
+print("  Saved selective_prediction_curve.png")
+
+# ════════════════════════════════════════
+# FIGURES 6+: Province-level choropleth maps
 # ════════════════════════════════════════
 print("Generating Spain choropleth maps...")
 ne_url = "https://naciscdn.org/naturalearth/10m/cultural/ne_10m_admin_1_states_provinces.zip"
@@ -432,11 +506,10 @@ if spain_geo is not None and "NPRO" in df.columns:
     plt.close(fig)
     print("  Saved spain_temporal_shift_map.png")
 
-    # Agreement map (uses test_data with predictions)
+    # Agreement map (composed-alone predictions)
     if "NPRO" in test_data.columns:
         print("Generating prediction-agreement figures...")
 
-        # Agreement map
         actual_dom = (test_data.groupby(["NPRO", "actual"]).size()
                       .unstack(fill_value=0).idxmax(axis=1).rename("dom_actual"))
         pred_dom = (test_data.groupby(["NPRO", "predicted"]).size()
@@ -486,7 +559,7 @@ if spain_geo is not None and "NPRO" in df.columns:
                 bbox=dict(facecolor="white", edgecolor="#cccccc",
                           boxstyle="round,pad=0.5", alpha=0.95))
         ax.set_title("Predicted vs. Actual Dominant Gentrification Type by Province\n"
-                     "(XGBoost, Predicting t+1, Test Set 2020--2022)",
+                     "(Test Set 2020--2022)",
                      fontsize=16, fontweight="bold", pad=15)
         ax.set_axis_off()
         plt.tight_layout()
@@ -498,17 +571,17 @@ if spain_geo is not None and "NPRO" in df.columns:
         # Calibration scatter
         rows = []
         for prov, g in test_data.groupby("NPRO"):
-            n = len(g)
+            n_prov = len(g)
             for c in CASE_ORDER:
                 rows.append({
-                    "province": prov, "case": c, "n": n,
+                    "province": prov, "case": c, "n": n_prov,
                     "actual": (g["actual"] == c).mean(),
                     "predicted": (g["predicted"] == c).mean(),
                 })
         cal = pd.DataFrame(rows)
         mae_pp = (cal["predicted"] - cal["actual"]).abs().mean() * 100
         r = np.corrcoef(cal["actual"], cal["predicted"])[0, 1]
-        n_prov = cal["province"].nunique()
+        n_prov_cal = cal["province"].nunique()
         lim = float(max(cal["actual"].max(), cal["predicted"].max()) * 1.08)
 
         fig, ax = plt.subplots(figsize=(10, 9))
@@ -522,7 +595,7 @@ if spain_geo is not None and "NPRO" in df.columns:
                        alpha=0.85, zorder=3, label=CASE_LABELS[c])
         ax.text(0.03, 0.97,
                 f"MAE = {mae_pp:.1f} pp\nPearson r = {r:.3f}\n"
-                f"{n_prov} provinces x 5 classes",
+                f"{n_prov_cal} provinces x 5 classes",
                 transform=ax.transAxes, ha="left", va="top", fontsize=12,
                 bbox=dict(facecolor="white", edgecolor="#cccccc",
                           boxstyle="round,pad=0.5", alpha=0.95))
@@ -534,7 +607,7 @@ if spain_geo is not None and "NPRO" in df.columns:
         ax.set_xlabel("Actual Class Share per Province", fontsize=14, fontweight="bold")
         ax.set_ylabel("Predicted Class Share per Province", fontsize=14, fontweight="bold")
         ax.set_title("Province-Level Calibration of Predicted Class Shares\n"
-                     "(XGBoost, Predicting t+1, Test Set 2020--2022)",
+                     "(Test Set 2020--2022)",
                      fontsize=16, fontweight="bold", pad=15)
         ax.legend(title="Case Type", title_fontsize=12, fontsize=10,
                   loc="lower right", framealpha=0.95, edgecolor="#cccccc", markerscale=0.7)

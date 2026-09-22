@@ -22,7 +22,7 @@
 \maketitle
 
 \begin{abstract}
-This paper develops a machine learning framework for predicting future gentrification processes at the census-section level across Spain. Using quarterly housing price data from the Idealista portal (2012--2022) covering 35,960 census sections, we operationalize gentrification into four distinct types based on the joint dynamics of rental and sale prices: renter pressure (Case~A), speculative investment (Case~B), active gentrification (Case~C), and neighborhood degradation (Case~D). We frame the problem as genuine forecasting: given observable market signals at time $t$, predict which gentrification type will manifest at $t{+}1$. After systematic comparison of eleven algorithms spanning gradient boosting, neural networks, SVMs, and recurrent models, XGBoost with rolling-origin retraining achieves the highest performance: 47\% accuracy on the five-class task (2.4$\times$ the 20\% chance baseline) and 0.77 AUC on binary displacement-risk detection. Under selective prediction, where the model abstains on uncertain cases, accuracy reaches 58\% at 50\% coverage and 63\% at 30\% coverage. Current gentrification state is the single most predictive feature, confirming strong temporal persistence, while external socioeconomic data adds negligible predictive power beyond price dynamics alone. These results demonstrate that gentrification trajectories leave detectable signals in housing market data, offering a practical triage tool for targeted urban policy intervention.
+This paper develops a machine learning framework for predicting future gentrification processes at the census-section level across Spain. Using quarterly housing price data from the Idealista portal (2012--2022) covering 35,960 census sections, we operationalize gentrification into four distinct types based on the joint dynamics of rental and sale prices: renter pressure (Case~A), speculative investment (Case~B), active gentrification (Case~C), and neighborhood degradation (Case~D). We frame the problem as genuine forecasting: given observable market signals at time $t$, predict which gentrification type will manifest at $t{+}1$. After systematic comparison of eleven algorithms spanning gradient boosting, neural networks, SVMs, and recurrent models, an XGBoost pipeline with rolling-origin retraining and directional decomposition achieves the highest performance: 48\% accuracy on the five-class task (2.4$\times$ the 20\% chance baseline) and 0.77 AUC on binary displacement-risk detection. Under selective prediction, where the model abstains on uncertain cases, accuracy reaches 59\% at 50\% coverage and 65\% at 30\% coverage. Current gentrification state is the single most predictive feature, confirming strong temporal persistence, while external socioeconomic data adds negligible predictive power beyond price dynamics alone. These results demonstrate that gentrification trajectories leave detectable signals in housing market data, offering a practical triage tool for targeted urban policy intervention.
 \end{abstract}
 
 \textbf{Keywords:} gentrification, machine learning, housing market, classification, XGBoost, census sections, Spain
@@ -133,12 +133,14 @@ Baseline (no case type) & 35 & 0.381 & 0.374 \\
 + current case type & 50 & 0.427 & 0.424 \\
 + history \& spatial features & 74 & 0.442 & 0.437 \\
 + mean-reversion geometry & 89 & 0.449 & 0.446 \\
-+ rolling-origin retraining & 89 & \textbf{0.472} & \textbf{0.470} \\
++ rolling-origin retraining & 89 & 0.472 & 0.470 \\
++ regression meta-features & 99 & 0.477 & 0.476 \\
++ directional decomposition & 99 & \textbf{0.479} & \textbf{0.478} \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-Three feature enrichment strategies yield cumulative gains beyond the case-type baseline. \textit{History features} encode each section's expanding-window trajectory (case frequencies, flip rate, volatility), adding 0.5pp. \textit{Spatial features} capture neighborhood context via administrative hierarchy (mean neighbor changes, case distribution, price gap), adding 1.0pp. \textit{Mean-reversion features} exploit the anti-persistent structure of price changes (rent autocorrelation $= -0.26$, sale $= -0.21$) by encoding gap-to-rolling-mean, expanding z-scores, and shock magnitude, adding 0.7pp. Finally, \textit{rolling-origin retraining}, where the model is refit each test quarter using all data prior to that quarter, adds 2.3pp by adapting to distributional shift (including COVID-19). Per-class precision and recall are balanced (0.43--0.56 range); Case B achieves the highest recall (0.56).
+Three feature enrichment strategies yield cumulative gains beyond the case-type baseline. \textit{History features} encode each section's expanding-window trajectory (case frequencies, flip rate, volatility), adding 0.5pp. \textit{Spatial features} capture neighborhood context via administrative hierarchy (mean neighbor changes, case distribution, price gap), adding 1.0pp. \textit{Mean-reversion features} exploit the anti-persistent structure of price changes (rent autocorrelation $= -0.26$, sale $= -0.21$) by encoding gap-to-rolling-mean, expanding z-scores, and shock magnitude, adding 0.7pp. \textit{Rolling-origin retraining}, where the model is refit each test quarter using all data prior to that quarter, adds 2.3pp by adapting to distributional shift (including COVID-19). \textit{Regression meta-features}, which are out-of-time XGBoost regression forecasts of next-quarter rent and sale price changes trained on expanding annual folds, add 0.5pp. Finally, \textit{directional decomposition} replaces the direct five-class classifier with two three-class models predicting price direction (down, zero, up) for rent and sale separately; the five gentrification classes are then recovered by multiplying the constituent probabilities (e.g., $P(\text{A}) = P(\text{rent up}) \times P(\text{sale} \leq 0)$), adding 0.2pp. Per-class precision and recall are balanced (0.43--0.55 range); Case B achieves the highest recall (0.55).
 
 \subsection{Binary Early-Warning Performance}
 
@@ -174,7 +176,7 @@ Integration of all seven external datasets adds only +0.24pp over the price-only
 
 \subsection{Geographic Patterns}
 
-Despite 43\% per-observation accuracy, the model correctly recovers the dominant gentrification type in 43 of 48 mainland provinces (90\%), with province-level Pearson $r = 0.79$ (Figure~\ref{fig:agreement}). Prediction errors are distributed across classes rather than systematically biased. Madrid, Barcelona, and the Balearic Islands show the highest Case~C intensity, consistent with their roles as primary destinations for real estate investment.
+Despite 48\% per-observation accuracy, the model correctly recovers the dominant gentrification type in 45 of 48 mainland provinces (94\%), with province-level Pearson $r = 0.92$ (Figure~\ref{fig:agreement}). Prediction errors are distributed across classes rather than systematically biased. Madrid, Barcelona, and the Balearic Islands show the highest Case~C intensity, consistent with their roles as primary destinations for real estate investment.
 
 \begin{figure}[H]
     \centering
@@ -193,37 +195,37 @@ In practical deployment, a policy tool need not predict every census section; it
 
 \begin{table}[H]
 \centering
-\caption{Selective prediction: accuracy at different coverage levels (rolling-origin model, 2020+ test set).}
+\caption{Selective prediction: accuracy at different coverage levels (final model, 2020+ test set).}
 \label{tab:selective}
 \begin{tabular}{ccc}
 \toprule
 \textbf{Coverage} & \textbf{Accuracy} & \textbf{Sections predicted} \\
 \midrule
-100\% & 0.472 & 199,000 \\
-80\% & 0.512 & 159,000 \\
-60\% & 0.552 & 119,000 \\
-50\% & \textbf{0.575} & 99,500 \\
-40\% & 0.603 & 79,600 \\
-30\% & \textbf{0.633} & 59,700 \\
+100\% & 0.479 & 199,000 \\
+80\% & 0.520 & 159,000 \\
+60\% & 0.562 & 119,000 \\
+50\% & \textbf{0.586} & 99,500 \\
+40\% & 0.613 & 79,600 \\
+30\% & \textbf{0.647} & 59,700 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-At 50\% coverage, accuracy reaches 57.5\%, well above the 50\% threshold that represents correctly predicting two independent binary signs simultaneously ($r = 0.01$). At 30\% coverage, accuracy rises to 63.3\%. This result reframes the practical value of the model: rather than an imperfect census-wide predictor, it becomes a reliable triage tool that identifies the roughly 100,000 sections per quarter where its predictions are trustworthy.
+At 50\% coverage, accuracy reaches 58.6\%, well above the 50\% threshold that represents correctly predicting two independent binary signs simultaneously ($r = 0.01$). At 30\% coverage, accuracy rises to 64.7\%. This result reframes the practical value of the model: rather than an imperfect census-wide predictor, it becomes a reliable triage tool that identifies the roughly 100,000 sections per quarter where its predictions are trustworthy.
 
 An annual reformulation (predicting year $Y{+}1$ from annual summaries of year~$Y$) achieves 42.4\% at full coverage, confirming the baseline ceiling persists across resolutions.
 
 \section{Discussion}
 
-The central finding is that gentrification trajectories are substantially predictable from housing market data. With rolling-origin retraining and enriched features, the model achieves 47.2\% full-coverage accuracy, and selective prediction reveals a large subset where accuracy exceeds 57\%. At 50\% coverage the model achieves 57.5\% on the five-class task; at 30\% coverage, 63.3\%. This reframes the practical value: rather than a census-wide oracle, the model functions as a triage tool that concentrates policy attention on the sections where prediction is reliable.
+The central finding is that gentrification trajectories are substantially predictable from housing market data. With rolling-origin retraining, regression meta-features, and directional decomposition, the model achieves 47.9\% full-coverage accuracy, and selective prediction reveals a large subset where accuracy exceeds 58\%. At 50\% coverage the model achieves 58.6\% on the five-class task; at 30\% coverage, 64.7\%. This reframes the practical value: rather than a census-wide oracle, the model functions as a triage tool that concentrates policy attention on the sections where prediction is reliable.
 
-Rolling-origin retraining contributes the largest single gain (+4.3pp), demonstrating that concept drift across the COVID-19 disruption is a major source of error in fixed-split evaluation. By refitting the model each quarter using all available prior data, the classifier adapts to evolving market dynamics without any information leakage. Four additional robustness results reinforce the interpretation. First, the algorithm comparison demonstrates that the baseline ceiling is not an artifact of model choice. Second, external socioeconomic data adds negligible information. Third, the annual reformulation reproduces a comparable accuracy ceiling (42.4\%). Fourth, spatial and history features add 1.5pp combined, confirming that neighborhood context carries genuine signal.
+Rolling-origin retraining contributes the largest single gain (+2.3pp), demonstrating that concept drift across the COVID-19 disruption is a major source of error in fixed-split evaluation. By refitting the model each quarter using all available prior data, the classifier adapts to evolving market dynamics without any information leakage. The directional decomposition, which replaces the monolithic five-class classifier with two three-class price-direction models whose outputs are composed via the gentrification type definitions, adds a further 0.2pp by aligning the classification boundary with the underlying operationalization. Four additional robustness results reinforce the interpretation. First, the algorithm comparison demonstrates that the baseline ceiling is not an artifact of model choice. Second, external socioeconomic data adds negligible information. Third, the annual reformulation reproduces a comparable accuracy ceiling (42.4\%). Fourth, spatial and history features add 1.5pp combined, confirming that neighborhood context carries genuine signal.
 
 The dominance of current case type in feature importance reveals strong temporal persistence: gentrification, once initiated, tends to continue. This has direct policy implications: intervention is most effective before a neighborhood transitions from Case D (degradation) to Cases A or B. The temporal case distribution provides an empirical complement to \citeauthor{hackworth2001changing}'s (\citeyear{hackworth2001changing}) stage model: post-crisis degradation gives way to speculative investment as the rent gap widens \citep{smith2005rent}, followed by consolidated gentrification. That LSTM networks underperform tree-based methods suggests that gentrification dynamics are better captured by feature-engineered snapshots than by raw sequential patterns. Limitations include the purely price-based operationalization, the 28\% rental missing-data rate, and the imposition of discrete boundaries on continuous processes.
 
 \section{Conclusions}
 
-This study demonstrates that gentrification type is substantially predictable from census-section-level housing market data when framed as genuine one-step-ahead forecasting. XGBoost with rolling-origin retraining achieves 47\% five-class accuracy (2.4$\times$ chance) on a temporally held-out test set spanning the COVID-19 disruption, and a binary displacement-risk detector achieves AUC 0.77 with 70\% recall. Under selective prediction, accuracy reaches 57.5\% at 50\% coverage and 63.3\% at 30\% coverage, demonstrating that gentrification forecasting is practically reliable as a targeted policy tool. Future work should explore multi-quarter prediction horizons with smoothed targets and extend the analysis to other European housing markets.
+This study demonstrates that gentrification type is substantially predictable from census-section-level housing market data when framed as genuine one-step-ahead forecasting. An XGBoost pipeline with rolling-origin retraining and directional decomposition achieves 48\% five-class accuracy (2.4$\times$ chance) on a temporally held-out test set spanning the COVID-19 disruption, and a binary displacement-risk detector achieves AUC 0.77 with 70\% recall. Under selective prediction, accuracy reaches 58.6\% at 50\% coverage and 64.7\% at 30\% coverage, demonstrating that gentrification forecasting is practically reliable as a targeted policy tool. Future work should explore multi-quarter prediction horizons with smoothed targets and extend the analysis to other European housing markets.
 
 {\small\bibliography{references}}
 
