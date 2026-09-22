@@ -1,0 +1,44 @@
+# Data (too large for git)
+*.dta
+*.dta.backup
+*.parquet
+*.csv
+*.xlsx
+*.shp
+*.shx
+*.dbf
+*.prj
+*.cpg
+data/
+Base de datos/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.ipynb_checkpoints/
+
+# LaTeX build artifacts
+*.aux
+*.bbl
+*.blg
+*.log
+*.out
+*.toc
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+
+# OS
+.DS_Store
+Thumbs.db
+
+# ML artifacts
+catboost_info/
+*.joblib
+*.pkl
+
+# IDE
+.vscode/
+.idea/
