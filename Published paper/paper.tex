@@ -88,7 +88,7 @@ The dataset is split temporally: pre-2020 observations (${\sim}$798,000 rows) fo
 
 \subsection{Case Distribution}
 
-Case B (speculative investment) is the most frequent (23.5\%), followed by A (16.8\%), D (16.3\%), and C (16.0\%). The temporal evolution (Figure~\ref{fig:case_time}) traces a structural narrative: Case D dominates in 2012--2013 (post-crisis), Case B expands by 2014--2016, and Case C grows steadily from 2017 as speculation matures into full gentrification.
+Among the five classified types, Case B (speculative investment) is the most frequent (27.6\%), followed by A (19.7\%), D (19.2\%), C (18.8\%), and None (14.8\%). The temporal evolution (Figure~\ref{fig:case_time}) traces a structural narrative: Case D dominates in 2012--2013 (post-crisis), Case B expands by 2014--2016, and Case C grows steadily from 2017 as speculation matures into full gentrification.
 
 \begin{figure}[H]
     \centering
@@ -184,7 +184,7 @@ Integration of all seven external datasets adds only +0.24pp over the price-only
 
 \subsection{Geographic Patterns}
 
-Despite 48\% per-observation accuracy, the model correctly recovers the dominant gentrification type in 45 of 48 mainland provinces (94\%), with province-level Pearson $r = 0.92$ (Figure~\ref{fig:agreement}). Prediction errors are distributed across classes rather than systematically biased. Madrid, Barcelona, and the Balearic Islands show the highest Case~C intensity, consistent with their roles as primary destinations for real estate investment.
+Despite 48\% per-observation accuracy, the model correctly recovers the dominant gentrification type in 47 of 50 provinces (94\%, excluding the Canary Islands), with province-level Pearson $r = 0.92$ (Figure~\ref{fig:agreement}). Prediction errors are distributed across classes rather than systematically biased. Madrid, Barcelona, and the Balearic Islands show the highest Case~C intensity, consistent with their roles as primary destinations for real estate investment.
 
 \begin{figure}[H]
     \centering
@@ -222,6 +222,62 @@ In practical deployment, a policy tool need not predict every census section; it
 At 50\% coverage, accuracy reaches 58.6\%, well above the 50\% threshold that represents correctly predicting two independent binary signs simultaneously ($r = 0.01$). At 30\% coverage, accuracy rises to 64.7\%. This result reframes the practical value of the model: rather than an imperfect census-wide predictor, it becomes a reliable triage tool that identifies the roughly 100,000 sections per quarter where its predictions are trustworthy.
 
 An annual reformulation (predicting year $Y{+}1$ from annual summaries of year~$Y$) achieves 42.4\% at full coverage, confirming the baseline ceiling persists across resolutions.
+
+\subsection{Regional Distribution of Gentrification Types}
+
+Beyond aggregate accuracy, the model's geographic structure reveals where each gentrification type concentrates. Figure~\ref{fig:intensity_panel} maps the province-level share of each case type across the full 2012--2022 period. The four panels reveal distinct spatial footprints that align with Spain's economic geography.
+
+\textbf{Case~A (renter pressure)} concentrates along the Mediterranean corridor and in Spain's two largest metropolitan areas: Cantabria (23.5\%), Madrid (23.2\%), Barcelona (21.9\%), Zaragoza (21.6\%), and Valencia (21.4\%). These are provinces with high rental demand and large tenant populations, where rising rents without corresponding sale price appreciation signal displacement pressure on existing residents. Rural provinces such as Teruel (12.0\%) and Cuenca (12.4\%) show substantially lower rates.
+
+\textbf{Case~B (speculative investment)} is the most geographically widespread type, dominating 39 of 52 provinces as the most frequent case. It is particularly intense in the Basque Country (Gipuzkoa 31.0\%, Araba 30.8\%), Murcia (30.9\%), and Andalusian provinces like Jaen (30.6\%). The Basque pattern reflects high property values creating conditions for sale-driven speculation, while in southern and southeastern Spain it reflects post-crisis recovery dynamics where sale prices rebounded while rental markets remained stagnant.
+
+\textbf{Case~C (active gentrification)} shows the sharpest geographic concentration: the Balearic Islands (25.1\%), Madrid (23.4\%), and Malaga (23.1\%) lead by wide margins. These three provinces share exposure to international real estate investment and tourism-driven demand that pushes both prices upward simultaneously. Barcelona (21.4\%) and Valencia (21.0\%) complete the top five. At the other extreme, rural provinces such as Teruel (9.2\%), Cuenca (10.4\%), and Caceres (11.7\%) rarely experience synchronized price increases, consistent with weak demand in depopulating areas.
+
+\textbf{Case~D (degradation)} follows a spatial pattern that partially mirrors Case~C: Madrid (22.8\%), Cantabria (22.3\%), Barcelona (21.7\%), and the Balearic Islands (21.1\%) also show the highest D rates. This co-occurrence is not contradictory; it reflects the cyclical nature of urban housing markets in dynamic provinces, where periods of simultaneous decline alternate with periods of synchronized growth. Provinces with low market volatility (Teruel, Cuenca) show low rates of both C and D.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\textwidth]{outputs/figures/spain_all_cases_intensity_panel.png}
+    \caption{Province-level share of each gentrification type (2012--2022). Cases A and C concentrate in major metropolitan and coastal tourism areas; Case B is geographically ubiquitous; rural interior provinces show lower intensity across all active types.}
+    \label{fig:intensity_panel}
+\end{figure}
+
+Aggregating by region sharpens the contrast. The Mediterranean coast shows the highest combined A+C rate (41.1\%), indicating that rental and sale markets move together in tourist-exposed areas, while the ``None'' rate is only 10.9\%, reflecting persistent market dynamism. Northern Spain and Andalusia, by contrast, show elevated Case~B rates (28.4--28.5\%) and higher ``None'' shares (17--18\%), suggesting markets where speculative sale activity proceeds without corresponding rental pressure. The interior provinces occupy a middle ground.
+
+The temporal dimension adds a structural narrative. In 2012--2015, Case~D dominated 11 provinces as the post-crisis collapse drove simultaneous price declines. By 2018--2021, no province retained D as its dominant type; Case~B had expanded to 39 provinces, reflecting the nationwide recovery in sale prices. This transition from degradation to speculation follows the rent-gap cycle theorized by \citet{smith2005rent}: crisis creates devaluation, which widens the gap between current use and potential returns, attracting the investment that initiates the next gentrification wave. The geographic selectivity of Case~C, concentrated in just a handful of high-demand provinces, suggests that the transition from speculation (B) to full gentrification (C) requires external demand drivers (tourism, international capital, migration pressure) beyond simple price recovery.
+
+\subsection{District-Level Analysis: Madrid and Barcelona}
+
+Province-level analysis reveals the broad geography; district-level analysis within Spain's two largest cities exposes the intra-urban structure. Madrid (21 districts, 2,408 census sections) and Barcelona (10 districts, 1,061 sections) together account for over 138,000 classified observations.
+
+\textbf{Madrid} exhibits a clear center--periphery gradient (Figure~\ref{fig:mad_dominant}). Central and upper-income districts are dominated by Case~C (active gentrification): Centro (28.4\% Case~C), Salamanca (27.7\%), Moncloa-Aravaca (26.9\%), Arganzuela (26.8\%), and Chamart\'{i}n (26.7\%). In these areas, both rental and sale prices increase simultaneously, reflecting sustained demand from higher-income residents and investors. Peripheral working-class districts are instead dominated by Case~B (speculative investment): Usera (28.4\% Case~B), Villaverde (26.8\%), Puente de Vallecas (26.6\%), and Moratalaz (25.8\%). Here, sale prices rise while rents remain stagnant, consistent with investor-driven property acquisition that has not yet translated into rental market pressure. Two districts show distinct patterns: Tetu\'{a}n and Vic\'{a}lvaro are dominated by Case~A (renter pressure), while Fuencarral-El Pardo and Carabanchel are dominated by Case~D (degradation).
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.85\textwidth]{outputs/figures/madrid_dominant_map.png}
+    \caption{Dominant gentrification type by district in Madrid (2012--2022). Active gentrification (Case~C) concentrates in central districts; speculative investment (Case~B) dominates the periphery.}
+    \label{fig:mad_dominant}
+\end{figure}
+
+\textbf{Barcelona} shows a similar but more compressed pattern (Figure~\ref{fig:bcn_dominant}). The historic center leads in Case~C: Ciutat Vella (26.4\%), l'Eixample (26.2\%), and les Corts (26.2\%). Peripheral districts with lower-income populations are dominated by Case~B: Nou Barris (25.7\% Case~B), Sant Andreu (25.4\%), and Sant Mart\'{i} (24.5\%). An unexpected finding is that several western and hillside districts (les Corts, Sarri\`{a}-Sant Gervasi, Gr\`{a}cia, Horta-Guinard\'{o}) are dominated by Case~D, reflecting the high market volatility in Barcelona's wealthier neighborhoods, where price corrections alternate with growth phases. Sants-Montju\"{i}c, the city's southernmost district with its mixed industrial and residential character, is the only district dominated by Case~A.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.85\textwidth]{outputs/figures/barcelona_dominant_map.png}
+    \caption{Dominant gentrification type by district in Barcelona (2012--2022). Case~C concentrates in the historic center (Ciutat Vella, l'Eixample); Case~B dominates working-class periphery (Nou Barris, Sant Andreu).}
+    \label{fig:bcn_dominant}
+\end{figure}
+
+The temporal evolution at the district level (Figure~\ref{fig:city_temporal}) reveals a dramatic structural transformation. In 2012--2013, Case~D dominated 20 of 21 Madrid districts and 9 of 10 Barcelona districts, reflecting the post-crisis collapse. By 2018--2019, Madrid had shifted almost entirely: Case~C dominated 13 districts (all central) while Case~B dominated 8 (all peripheral), with no district retaining D as its dominant type. Barcelona's transition was less complete: D remained dominant in 4 districts during 2018--2019, reflecting the city's stronger exposure to tourism-driven volatility. When the window is extended to include the COVID-19 disruption (2020--2021), Madrid reverts to B-dominant in 16 districts as the pandemic depressed rental markets, and Barcelona sees D re-expand to 8 of 10 districts.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\textwidth]{outputs/figures/cities_temporal_dominant.png}
+    \caption{Temporal evolution of dominant gentrification type by district. In 2012--2013, degradation (Case~D) dominated nearly all districts in both cities. By 2018--2019, Madrid had transitioned to a center--periphery pattern of active gentrification (C) versus speculation (B), while Barcelona retained more D-dominant districts.}
+    \label{fig:city_temporal}
+\end{figure}
+
+This district-level center--periphery gradient is consistent with the classical gentrification sequence: central neighborhoods with cultural capital and infrastructure attract investment that drives simultaneous price increases (Case~C), while peripheral areas experience the earlier stage of sale-driven speculation (Case~B) that may or may not mature into full gentrification. The temporal shift from universal degradation (D) to differentiated patterns mirrors the rent-gap cycle at a finer geographic scale.
 
 \section{Discussion}
 
