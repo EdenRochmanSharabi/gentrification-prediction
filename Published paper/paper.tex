@@ -60,13 +60,21 @@ Conditions are evaluated hierarchically: C first (both positive), then D (both n
 
 \subsection{Prediction Framework}
 
-This study frames gentrification as a genuine forecasting task: given observable market features for a census section at time $t$, predict which gentrification type will manifest at $t{+}1$. Because the target is the \textit{next} quarter's case, all current-period features are legitimate inputs containing no information about future price changes.
+This study frames gentrification as a genuine forecasting task: given observable market features for a census section at time $t$, predict which gentrification type will manifest at $t{+}1$. Because the target is the \textit{next} quarter's case, all current-period features are legitimate inputs containing no information about future price changes. We also train binary classifiers for three policy-relevant targets: displacement risk (Cases A or C), active gentrification (Case C), and investment pressure (Cases B or C).
 
-The feature set consists of 50 variables organized into nine groups: current prices and their ratio; current case type (ordinal and indicators); lagged prices (1, 2, 4 quarters); lagged changes and their interaction; rolling means and standard deviations (3 and 6 quarters); momentum and acceleration; position relative to provincial mean; year-over-year changes; and housing stock levels, ratios, and temporal indicators. We also train binary classifiers for three policy-relevant targets: displacement risk (Cases A or C), active gentrification (Case C), and investment pressure (Cases B or C).
+\subsection{Feature Engineering}
+
+The base feature set consists of 50 variables organized into nine groups: current prices and their ratio; current case type (ordinal and one-hot indicators); lagged prices (1, 2, 4 quarters); lagged changes and their interaction; rolling means and standard deviations (3 and 6 quarters); momentum and acceleration; position relative to provincial mean; year-over-year changes; and housing stock levels, ratios, and temporal indicators.
+
+Three additional feature groups capture temporal, spatial, and structural dynamics. \textit{History features} (11 variables) encode each section's expanding-window trajectory: cumulative case-type frequencies, flip rate, and rent/sale volatility, all lagged one period to prevent leakage. \textit{Spatial features} (13 variables) capture neighborhood context at the district level: mean neighbor price changes, case-type distribution, price gaps, and municipality averages. \textit{Mean-reversion features} (15 variables) exploit the anti-persistent structure of quarterly price changes (rent autocorrelation $= -0.26$, sale $= -0.21$, cross-correlation $= 0.01$) by encoding gap-to-rolling-mean, expanding z-scores, shock magnitude, sign streaks, and trend slopes.
 
 \subsection{Classification Models}
 
 We compare eleven algorithms across four families: gradient boosting (XGBoost \citep{chen2016xgboost}, LightGBM, CatBoost, Random Forest, Voting/Stacking ensembles), neural networks (MLP), linear models (logistic regression, SVM), and LSTM networks (4- and 8-quarter windows). XGBoost hyperparameters were tuned via Bayesian optimization (Optuna, 50 trials) on a held-out 2018--2019 validation set.
+
+\subsection{Model Enhancements}
+
+Three techniques are applied to the best-performing XGBoost classifier. \textit{Rolling-origin retraining} addresses concept drift by refitting the model for each test quarter using all observations with period $< t$, so the classifier adapts to evolving market dynamics (including the COVID-19 disruption) without any information leakage. \textit{Regression meta-features} add out-of-time forecasts of next-quarter rent and sale price changes as four additional inputs: two continuous predictions and two sign indicators. These are produced by XGBoost regressors trained on expanding annual folds (train on years $< Y$, predict year $Y$), ensuring strict temporal separation. \textit{Directional decomposition} replaces the monolithic five-class classifier with two three-class models that predict price direction (down, zero, up) for rent and sale separately; the five gentrification probabilities are recovered by multiplying the constituent direction probabilities according to the case definitions (e.g., $P(\text{A}) = P(\text{rent up}) \times [P(\text{sale down}) + P(\text{sale zero})]$, $P(\text{C}) = P(\text{rent up}) \times P(\text{sale up})$).
 
 \subsection{External Data Integration}
 
@@ -74,7 +82,7 @@ To test whether socioeconomic context improves prediction, we integrate seven IN
 
 \subsection{Evaluation Strategy}
 
-The dataset is split temporally: pre-2020 observations (${\sim}$798,000 rows) for training and 2020+ (${\sim}$199,000 rows) for testing, preventing information leakage and testing generalization across the COVID-19 disruption. Evaluation uses accuracy, weighted F1, and AUC-ROC (binary tasks).
+The dataset is split temporally: pre-2020 observations (${\sim}$798,000 rows) for training and 2020+ (${\sim}$199,000 rows) for testing, preventing information leakage and testing generalization across the COVID-19 disruption. A separate 2018--2019 validation set (trained on pre-2018 data) is used for all hyperparameter and design decisions, including ensemble weights, composition blend coefficients, and feature selection thresholds. Evaluation uses accuracy, weighted F1, and AUC-ROC (binary tasks). For selective prediction, observations are ranked by the model's maximum predicted probability and only the top fraction is retained, producing an accuracy--coverage tradeoff curve.
 
 \section{Results}
 
@@ -140,7 +148,7 @@ Baseline (no case type) & 35 & 0.381 & 0.374 \\
 \end{tabular}
 \end{table}
 
-Three feature enrichment strategies yield cumulative gains beyond the case-type baseline. \textit{History features} encode each section's expanding-window trajectory (case frequencies, flip rate, volatility), adding 0.5pp. \textit{Spatial features} capture neighborhood context via administrative hierarchy (mean neighbor changes, case distribution, price gap), adding 1.0pp. \textit{Mean-reversion features} exploit the anti-persistent structure of price changes (rent autocorrelation $= -0.26$, sale $= -0.21$) by encoding gap-to-rolling-mean, expanding z-scores, and shock magnitude, adding 0.7pp. \textit{Rolling-origin retraining}, where the model is refit each test quarter using all data prior to that quarter, adds 2.3pp by adapting to distributional shift (including COVID-19). \textit{Regression meta-features}, which are out-of-time XGBoost regression forecasts of next-quarter rent and sale price changes trained on expanding annual folds, add 0.5pp. Finally, \textit{directional decomposition} replaces the direct five-class classifier with two three-class models predicting price direction (down, zero, up) for rent and sale separately; the five gentrification classes are then recovered by multiplying the constituent probabilities (e.g., $P(\text{A}) = P(\text{rent up}) \times P(\text{sale} \leq 0)$), adding 0.2pp. Per-class precision and recall are balanced (0.43--0.55 range); Case B achieves the highest recall (0.55).
+Each enrichment step yields cumulative gains. History features add 0.5pp, spatial features 1.0pp, and mean-reversion features 0.7pp beyond the case-type baseline. Rolling-origin retraining contributes the largest single gain (+2.3pp) by adapting to distributional shift across the COVID-19 disruption. Regression meta-features add 0.5pp, and directional decomposition adds 0.2pp by aligning the classification boundary with the gentrification type definitions. Per-class precision and recall are balanced (0.43--0.55 range); Case B achieves the highest recall (0.55).
 
 \subsection{Binary Early-Warning Performance}
 
